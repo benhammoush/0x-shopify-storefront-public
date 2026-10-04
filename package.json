@@ -1,9 +1,11 @@
 {
   "name": "0x-shopify-storefront",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "0x Shopify testnet portfolio storefront",
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
@@ -16,14 +18,13 @@
     "react-router-dom": "^7.13.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.21",
-    "@tailwindcss/postcss": "^4.3.3",
-    "daisyui": "^5.7.47",
     "jsdom": "^26.1.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^4.3.3",

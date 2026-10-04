@@ -1,8 +1,8 @@
 # 0x Shopify Storefront
 
-Portfolio storefront built with React, Vite, TypeScript, React Router, Tailwind, and DaisyUI. Shopify is accessed only through the companion Cloudflare Worker API.
+Portfolio clothing storefront built with React, Vite, TypeScript, React Router, and Tailwind. Shopify is accessed only through the companion Cloudflare Worker API.
 
-Its UI uses the Iris token-system approach: light/dark palettes, compact operational metadata, bordered surface panels, and responsive header/status primitives, adapted to 0x commerce flows.
+Its UI uses the Iris token-system approach: light/dark palettes, compact operational metadata, bordered surface panels, and responsive primitives. Its digital-underground editorial composition is distinct from Iris's dashboard layouts.
 
 ## Demo Boundary
 
@@ -11,6 +11,13 @@ Its UI uses the Iris token-system approach: light/dark palettes, compact operati
 - Crypto checkout is testnet-only and disabled until its payment specification is implemented and tested.
 - This is not Shopify Payments or a Shopify-approved payment method.
 - No real funds or products are accepted.
+
+## Storefront Scope
+
+- Editorial home, catalog, curated collections, product-detail routes, bag boundary, and manifesto are active.
+- The catalog is sourced only through the Worker endpoint at `/v1/products`.
+- The bag is intentionally non-transactional until the Worker exposes verified Shopify cart endpoints.
+- Product, collection, and bag presentation must never imply that checkout or crypto settlement is available.
 
 ## Local Development
 
