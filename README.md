@@ -2,6 +2,8 @@
 
 Portfolio storefront built with React, Vite, TypeScript, React Router, Tailwind, and DaisyUI. Shopify is accessed only through the companion Cloudflare Worker API.
 
+Its UI uses the Iris token-system approach: light/dark palettes, compact operational metadata, bordered surface panels, and responsive header/status primitives, adapted to 0x commerce flows.
+
 ## Demo Boundary
 
 - Shopify development store provides catalog data.
