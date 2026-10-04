@@ -19,3 +19,4 @@
 .campaign-art b { padding: .35rem .5rem; background: var(--app-bg); color: var(--acid); }
 .campaign-art--void img { filter: hue-rotate(95deg) saturate(.7); }
 .product-image__placeholder { object-fit: cover; }
+.campaign-art__fallback, .product-image__fallback { display: grid; width: 100%; height: 100%; place-items: center; padding: 1rem; background: var(--surface); color: var(--muted); font: 10px ui-monospace, monospace; letter-spacing: .1em; text-align: center; text-transform: uppercase; }
