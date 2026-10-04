@@ -12,10 +12,11 @@ describe('storefront routes', () => {
     expect(screen.queryByRole('button', { name: /checkout/i })).not.toBeInTheDocument();
   });
 
-  it('renders a local curated collection without requesting an unavailable collection API', () => {
-    render(<MemoryRouter initialEntries={['/collections/transmissions']}><App /></MemoryRouter>);
+  it('renders the custom payment boundary without enabling crypto checkout', () => {
+    render(<MemoryRouter initialEntries={['/payment-demo']}><App /></MemoryRouter>);
 
-    expect(screen.getByRole('heading', { name: 'Transmissions' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /shop pieces/i })).toHaveAttribute('href', '/shop');
+    expect(screen.getByRole('heading', { name: /trust boundary/i })).toBeInTheDocument();
+    expect(screen.getByText(/crypto checkout disabled/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /pay/i })).not.toBeInTheDocument();
   });
 });
