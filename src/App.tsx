@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
 import { APP_PACKAGE_VERSION } from './appVersion';
 import { ApiError, apiGet, apiPost } from './api/client';
@@ -14,8 +14,10 @@ interface Cart {
   totalQuantity: number;
   cost: { totalAmount: { amount: string; currencyCode: string } };
   lines: { nodes: Array<{ id: string; quantity: number; merchandise: { id: string; title: string; product: { handle: string; title: string } } }> };
+  deliveryGroups: { nodes: Array<{ id: string; deliveryOptions: Array<{ handle: string; title: string; description?: string | null; estimatedCost: { amount: string; currencyCode: string } }>; selectedDeliveryOption?: { handle: string } | null }> };
 }
-interface CartContextValue { cart?: Cart; loading: boolean; error?: ApiError; addProduct: (product: Product) => Promise<void>; removeLine: (lineId: string) => Promise<void> }
+interface DeliveryAddress { firstName: string; lastName: string; address1: string; address2: string; city: string; provinceCode: string; zip: string; countryCode: string }
+interface CartContextValue { cart?: Cart; loading: boolean; error?: ApiError; addProduct: (product: Product) => Promise<void>; removeLine: (lineId: string) => Promise<void>; updateDeliveryAddress: (address: DeliveryAddress) => Promise<void>; selectDeliveryOption: (deliveryGroupId: string, deliveryOptionHandle: string) => Promise<void> }
 
 const CampaignMediaContext = createContext<CampaignMedia | undefined>(undefined);
 const CartContext = createContext<CartContextValue | undefined>(undefined);
@@ -52,7 +54,17 @@ function CartProvider({ children }: { children: React.ReactNode }) {
     setLoading(true); setError(undefined);
     try { const { data } = await apiPost<{ cart: Cart }>(`/v1/carts/${encodeURIComponent(cart.id)}/lines/${encodeURIComponent(lineId)}`, { quantity: 0 }); saveCart(data.cart); } catch (cause) { setError(cause instanceof ApiError ? cause : new ApiError('Unable to update the bag.')); } finally { setLoading(false); }
   };
-  return <CartContext.Provider value={{ cart, loading, error, addProduct, removeLine }}>{children}</CartContext.Provider>;
+  const updateDeliveryAddress = async (address: DeliveryAddress) => {
+    if (!cart) return;
+    setLoading(true); setError(undefined);
+    try { const { data } = await apiPost<{ cart: Cart }>(`/v1/carts/${encodeURIComponent(cart.id)}/delivery-address`, address); saveCart(data.cart); } catch (cause) { setError(cause instanceof ApiError ? cause : new ApiError('Unable to calculate delivery options.')); } finally { setLoading(false); }
+  };
+  const selectDeliveryOption = async (deliveryGroupId: string, deliveryOptionHandle: string) => {
+    if (!cart) return;
+    setLoading(true); setError(undefined);
+    try { const { data } = await apiPost<{ cart: Cart }>(`/v1/carts/${encodeURIComponent(cart.id)}/delivery-options`, { options: [{ deliveryGroupId, deliveryOptionHandle }] }); saveCart(data.cart); } catch (cause) { setError(cause instanceof ApiError ? cause : new ApiError('Unable to select this delivery option.')); } finally { setLoading(false); }
+  };
+  return <CartContext.Provider value={{ cart, loading, error, addProduct, removeLine, updateDeliveryAddress, selectDeliveryOption }}>{children}</CartContext.Provider>;
 }
 
 function Price({ product }: { product: Product }) {
@@ -125,11 +137,19 @@ function PaymentDemo() {
   return <section className="page payment-page"><header className="page-header"><p className="eyebrow">0x payment gateway</p><h1>TRUST<br /><em>BOUNDARY.</em></h1><p>A custom payment gateway demonstration for a Shopify development store. It does not replace Shopify Payments and it cannot accept real funds.</p></header><GatewaySummary /><section className="payment-detail"><article><p className="eyebrow">Browser</p><p>Can request storefront data and submit a future payment request. It cannot set authoritative amount, recipient, chain, or status.</p></article><article><p className="eyebrow">Worker</p><p>Will fetch the canonical Shopify cart, bind it to a payment intent, and enforce a single settlement.</p></article><article><p className="eyebrow">Verifier</p><p>Will confirm the ERC-20 transfer and required confirmations before a tagged Shopify demo order is updated.</p></article></section><div className="resource-state"><p className="eyebrow">Crypto checkout disabled</p><p>Chain, token decimals, conversion formula, quote expiry, confirmation count, and settlement policies have not been specified and tested. Payment controls remain unavailable by design.</p></div></section>;
 }
 
+function DeliveryEstimator({ cart }: { cart: Cart }) {
+  const { loading, updateDeliveryAddress, selectDeliveryOption } = useCart();
+  const [address, setAddress] = useState<DeliveryAddress>({ firstName: '', lastName: '', address1: '', address2: '', city: '', provinceCode: '', zip: '', countryCode: 'US' });
+  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void updateDeliveryAddress(address); };
+  const set = (key: keyof DeliveryAddress) => (event: React.ChangeEvent<HTMLInputElement>) => setAddress({ ...address, [key]: event.target.value });
+  return <section className="delivery-estimator"><p className="eyebrow">Step 01 / Delivery</p><h2>CALCULATE<br /><em>THE TOTAL.</em></h2><p>Shopify calculates delivery and taxes from this one-time address before any future test-USDC quote.</p><form onSubmit={submit}><div className="delivery-grid"><input required placeholder="First name" value={address.firstName} onChange={set('firstName')} /><input required placeholder="Last name" value={address.lastName} onChange={set('lastName')} /><input required placeholder="Address" value={address.address1} onChange={set('address1')} /><input placeholder="Apartment, suite, etc." value={address.address2} onChange={set('address2')} /><input required placeholder="City" value={address.city} onChange={set('city')} /><input placeholder="State / province code" value={address.provinceCode} onChange={set('provinceCode')} /><input required placeholder="Postal code" value={address.zip} onChange={set('zip')} /><input required maxLength={2} placeholder="Country code" value={address.countryCode} onChange={(event) => setAddress({ ...address, countryCode: event.target.value.toUpperCase() })} /></div><button className="button button--quiet" disabled={loading}>{loading ? 'Calculating' : 'Calculate delivery'}</button></form>{cart.deliveryGroups.nodes.length > 0 && <div className="delivery-options"><p className="eyebrow">Step 02 / Select delivery</p>{cart.deliveryGroups.nodes.map((group) => group.deliveryOptions.length ? group.deliveryOptions.map((option) => <button key={option.handle} className={group.selectedDeliveryOption?.handle === option.handle ? 'delivery-option delivery-option--selected' : 'delivery-option'} disabled={loading} onClick={() => void selectDeliveryOption(group.id, option.handle)}><span>{option.title}{option.description ? ` / ${option.description}` : ''}</span><b>{new Intl.NumberFormat('en', { style: 'currency', currency: option.estimatedCost.currencyCode }).format(Number(option.estimatedCost.amount))}</b></button>) : <p key={group.id}>No Shopify delivery options are available for this address.</p>)}</div>}</section>;
+}
+
 function CartPage() {
   const { cart, loading, error, removeLine } = useCart();
   if (loading && !cart) return <section className="page cart-page"><p className="eyebrow">Bag</p><h1>LOADING<br /><em>BAG.</em></h1></section>;
   if (!cart?.lines.nodes.length) return <section className="page cart-page"><p className="eyebrow">Bag / 00</p><h1>YOUR BAG IS<br /><em>EMPTY.</em></h1><p>Add a Shopify product to create a Worker-managed cart.</p><Link className="button button--solid" to="/shop">Continue browsing</Link></section>;
-  return <section className="page cart-page"><p className="eyebrow">Bag / {String(cart.totalQuantity).padStart(2, '0')}</p><h1>YOUR<br /><em>BAG.</em></h1><div className="cart-lines">{cart.lines.nodes.map((line) => <article key={line.id}><div><p className="eyebrow">{line.merchandise.product.handle}</p><h2>{line.merchandise.product.title}</h2><p>{line.merchandise.title} / Qty {line.quantity}</p></div><button className="text-link" disabled={loading} onClick={() => void removeLine(line.id)}>Remove</button></article>)}</div><p className="cart-total">{new Intl.NumberFormat('en', { style: 'currency', currency: cart.cost.totalAmount.currencyCode }).format(Number(cart.cost.totalAmount.amount))}</p><a className="button button--solid" href={cart.checkoutUrl}>Continue to Shopify test checkout</a>{error && <p className="product-note" role="alert">{error.message}</p>}<aside><p className="eyebrow">Demo boundary</p><p>This opens Shopify’s development-store checkout. Solana test-USDC payment stays disabled until its recipient wallet and Worker-only Admin configuration are supplied.</p></aside></section>;
+  return <section className="page cart-page"><p className="eyebrow">Bag / {String(cart.totalQuantity).padStart(2, '0')}</p><h1>YOUR<br /><em>BAG.</em></h1><div className="cart-lines">{cart.lines.nodes.map((line) => <article key={line.id}><div><p className="eyebrow">{line.merchandise.product.handle}</p><h2>{line.merchandise.product.title}</h2><p>{line.merchandise.title} / Qty {line.quantity}</p></div><button className="text-link" disabled={loading} onClick={() => void removeLine(line.id)}>Remove</button></article>)}</div><DeliveryEstimator cart={cart} /><p className="cart-total">{new Intl.NumberFormat('en', { style: 'currency', currency: cart.cost.totalAmount.currencyCode }).format(Number(cart.cost.totalAmount.amount))}</p><a className="button button--solid" href={cart.checkoutUrl}>Continue to Shopify test checkout</a>{error && <p className="product-note" role="alert">{error.message}</p>}<aside><p className="eyebrow">Demo boundary</p><p>This opens Shopify’s development-store checkout. Solana Devnet RPC is configured, but test-USDC payment stays disabled until its verifier and Shopify order flow are implemented.</p></aside></section>;
 }
 
 function About() {
