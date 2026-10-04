@@ -1,14 +1,59 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
 import { APP_PACKAGE_VERSION } from './appVersion';
+import { ApiError, apiGet, apiPost } from './api/client';
 import { applyThemeMode, initialThemeMode, UiThemeMode } from './design-system/theme';
 import { useWorkerResource } from './hooks/useWorkerResource';
 
-interface Product { id: string; handle: string; title: string; description: string; availableForSale: boolean; featuredImage?: { url: string; altText?: string | null } | null; priceRange: { minVariantPrice: { amount: string; currencyCode: string } } }
+interface Product { id: string; handle: string; title: string; description: string; availableForSale: boolean; featuredImage?: { url: string; altText?: string | null } | null; priceRange: { minVariantPrice: { amount: string; currencyCode: string } }; variants: { nodes: Array<{ id: string; title: string; availableForSale: boolean }> } }
 interface CampaignImage { url: string; altText?: string | null }
 interface CampaignMedia { main: CampaignImage; alt1: CampaignImage; alt2: CampaignImage }
+interface Cart {
+  id: string;
+  checkoutUrl: string;
+  totalQuantity: number;
+  cost: { totalAmount: { amount: string; currencyCode: string } };
+  lines: { nodes: Array<{ id: string; quantity: number; merchandise: { id: string; title: string; product: { handle: string; title: string } } }> };
+}
+interface CartContextValue { cart?: Cart; loading: boolean; error?: ApiError; addProduct: (product: Product) => Promise<void>; removeLine: (lineId: string) => Promise<void> }
 
 const CampaignMediaContext = createContext<CampaignMedia | undefined>(undefined);
+const CartContext = createContext<CartContextValue | undefined>(undefined);
+const CART_ID_KEY = '0x-shopify-cart-id';
+
+function useCart() { const cart = useContext(CartContext); if (!cart) throw new Error('Cart context is unavailable.'); return cart; }
+
+function CartProvider({ children }: { children: React.ReactNode }) {
+  const [cart, setCart] = useState<Cart>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError>();
+  const saveCart = (value: Cart) => { setCart(value); localStorage.setItem(CART_ID_KEY, value.id); };
+  useEffect(() => {
+    const id = localStorage.getItem(CART_ID_KEY);
+    if (!id) { setLoading(false); return; }
+    apiGet<{ cart: Cart }>(`/v1/carts/${encodeURIComponent(id)}`).then(({ data }) => saveCart(data.cart)).catch((cause: unknown) => {
+      const apiError = cause instanceof ApiError ? cause : new ApiError('Unable to load the saved bag.');
+      if (apiError.code === 'CART_NOT_FOUND') localStorage.removeItem(CART_ID_KEY);
+      else setError(apiError);
+    }).finally(() => setLoading(false));
+  }, []);
+  const addProduct = async (product: Product) => {
+    const merchandise = product.variants.nodes.find((variant) => variant.availableForSale);
+    if (!merchandise) throw new ApiError('This product has no available variant.', 'PRODUCT_UNAVAILABLE');
+    setLoading(true); setError(undefined);
+    try {
+      const path = cart ? `/v1/carts/${encodeURIComponent(cart.id)}/lines` : '/v1/carts';
+      const { data } = await apiPost<{ cart: Cart }>(path, { lines: [{ merchandiseId: merchandise.id, quantity: 1 }] });
+      saveCart(data.cart);
+    } catch (cause) { setError(cause instanceof ApiError ? cause : new ApiError('Unable to add this product to the bag.')); throw cause; } finally { setLoading(false); }
+  };
+  const removeLine = async (lineId: string) => {
+    if (!cart) return;
+    setLoading(true); setError(undefined);
+    try { const { data } = await apiPost<{ cart: Cart }>(`/v1/carts/${encodeURIComponent(cart.id)}/lines/${encodeURIComponent(lineId)}`, { quantity: 0 }); saveCart(data.cart); } catch (cause) { setError(cause instanceof ApiError ? cause : new ApiError('Unable to update the bag.')); } finally { setLoading(false); }
+  };
+  return <CartContext.Provider value={{ cart, loading, error, addProduct, removeLine }}>{children}</CartContext.Provider>;
+}
 
 function Price({ product }: { product: Product }) {
   const { amount, currencyCode } = product.priceRange.minVariantPrice;
@@ -42,8 +87,9 @@ function ThemeToggle() {
 function Layout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const campaign = useWorkerResource<CampaignMedia>('/v1/campaign-media');
+  const { cart } = useCart();
   const closeMenu = () => setMenuOpen(false);
-  return <CampaignMediaContext.Provider value={campaign.data}><main><div className="announcement"><span>Shopify commerce / custom payment gateway</span><span>Testnet demonstration only</span></div><header className="site-header"><nav aria-label="Primary navigation" className="site-nav"><Link className="wordmark" to="/" onClick={closeMenu}>0X<span>_</span></Link><button className="menu-toggle" aria-expanded={menuOpen} aria-controls="site-links" onClick={() => setMenuOpen(!menuOpen)}>Menu</button><div id="site-links" className={`site-links ${menuOpen ? 'site-links--open' : ''}`}><Link to="/shop" onClick={closeMenu}>Storefront</Link><Link to="/payment-demo" onClick={closeMenu}>Payment gateway</Link><Link to="/about" onClick={closeMenu}>Project</Link></div><div className="site-actions"><ThemeToggle /><Link to="/cart" aria-label="Open bag">Bag <sup>00</sup></Link></div></nav></header>{children}<footer className="site-footer"><div><Link className="wordmark" to="/">0X<span>_</span></Link><p>Shopify storefront.<br />Custom payment boundary.</p></div><div><p className="eyebrow">Navigate</p><Link to="/shop">Storefront</Link><Link to="/payment-demo">Payment gateway</Link><Link to="/about">Project scope</Link></div><div><p className="eyebrow">Portfolio boundary</p><p>Testnet only. No real funds, products, or Shopify Payments checkout.</p><small>Build {APP_PACKAGE_VERSION}</small></div></footer></main></CampaignMediaContext.Provider>;
+  return <CampaignMediaContext.Provider value={campaign.data}><main><div className="announcement"><span>Shopify commerce / custom payment gateway</span><span>Testnet demonstration only</span></div><header className="site-header"><nav aria-label="Primary navigation" className="site-nav"><Link className="wordmark" to="/" onClick={closeMenu}>0X<span>_</span></Link><button className="menu-toggle" aria-expanded={menuOpen} aria-controls="site-links" onClick={() => setMenuOpen(!menuOpen)}>Menu</button><div id="site-links" className={`site-links ${menuOpen ? 'site-links--open' : ''}`}><Link to="/shop" onClick={closeMenu}>Storefront</Link><Link to="/payment-demo" onClick={closeMenu}>Payment gateway</Link><Link to="/about" onClick={closeMenu}>Project</Link></div><div className="site-actions"><ThemeToggle /><Link to="/cart" aria-label="Open bag">Bag <sup>{String(cart?.totalQuantity || 0).padStart(2, '0')}</sup></Link></div></nav></header>{children}<footer className="site-footer"><div><Link className="wordmark" to="/">0X<span>_</span></Link><p>Shopify storefront.<br />Custom payment boundary.</p></div><div><p className="eyebrow">Navigate</p><Link to="/shop">Storefront</Link><Link to="/payment-demo">Payment gateway</Link><Link to="/about">Project scope</Link></div><div><p className="eyebrow">Portfolio boundary</p><p>Testnet only. No real funds, products, or Shopify Payments checkout.</p><small>Build {APP_PACKAGE_VERSION}</small></div></footer></main></CampaignMediaContext.Provider>;
 }
 
 function GatewaySummary() {
@@ -68,10 +114,11 @@ function ProductPage() {
   const { handle } = useParams();
   const { data, loading, error } = useWorkerResource<{ products: Product[] }>('/v1/products');
   const product = data?.products.find((item) => item.handle === handle);
+  const { addProduct, loading: cartLoading, error: cartError } = useCart();
   if (loading) return <section className="page"><div className="product-detail product-detail--loading"><div className="product-skeleton" /><div className="product-skeleton" /></div></section>;
   if (error) return <section className="page"><div className="resource-state"><p className="eyebrow">Catalog unavailable</p><p>{error.message}</p></div></section>;
   if (!product) return <section className="page"><div className="resource-state"><p className="eyebrow">Product unavailable</p><h1>This product is not in the current Shopify response.</h1><Link className="button button--solid" to="/shop">Return to storefront</Link></div></section>;
-  return <section className="page product-detail"><ProductImage product={product} className="product-detail__image" /><div className="product-detail__info"><p className="eyebrow">Shopify product / {product.availableForSale ? 'Available' : 'Unavailable'}</p><h1>{product.title}</h1><p className="product-price"><Price product={product} /></p><p className="product-description">{product.description || 'Product information supplied through the Shopify storefront response.'}</p><button className="button button--disabled" disabled>Bag unavailable / cart API pending</button><p className="product-note">The future cart total is verified by the Worker before any testnet payment intent is created.</p></div></section>;
+  return <section className="page product-detail"><ProductImage product={product} className="product-detail__image" /><div className="product-detail__info"><p className="eyebrow">Shopify product / {product.availableForSale ? 'Available' : 'Unavailable'}</p><h1>{product.title}</h1><p className="product-price"><Price product={product} /></p><p className="product-description">{product.description || 'Product information supplied through the Shopify storefront response.'}</p><button className="button button--solid" disabled={!product.availableForSale || cartLoading} onClick={() => void addProduct(product)}>{cartLoading ? 'Updating bag' : product.availableForSale ? 'Add to bag' : 'Unavailable'}</button>{cartError && <p className="product-note" role="alert">{cartError.message}</p>}<p className="product-note">Shopify calculates this bag total. A future testnet payment intent will be bound to that Worker-fetched value.</p></div></section>;
 }
 
 function PaymentDemo() {
@@ -79,11 +126,14 @@ function PaymentDemo() {
 }
 
 function CartPage() {
-  return <section className="page cart-page"><p className="eyebrow">Bag / 00</p><h1>YOUR BAG IS<br /><em>OFFLINE.</em></h1><p>Shopify cart operations are intentionally unavailable until the Worker exposes verified cart endpoints.</p><Link className="button button--solid" to="/shop">Continue browsing</Link><aside><p className="eyebrow">Demo boundary</p><p>Checkout cannot be simulated. Any future testnet settlement will be marked only after a verified testnet transfer.</p></aside></section>;
+  const { cart, loading, error, removeLine } = useCart();
+  if (loading && !cart) return <section className="page cart-page"><p className="eyebrow">Bag</p><h1>LOADING<br /><em>BAG.</em></h1></section>;
+  if (!cart?.lines.nodes.length) return <section className="page cart-page"><p className="eyebrow">Bag / 00</p><h1>YOUR BAG IS<br /><em>EMPTY.</em></h1><p>Add a Shopify product to create a Worker-managed cart.</p><Link className="button button--solid" to="/shop">Continue browsing</Link></section>;
+  return <section className="page cart-page"><p className="eyebrow">Bag / {String(cart.totalQuantity).padStart(2, '0')}</p><h1>YOUR<br /><em>BAG.</em></h1><div className="cart-lines">{cart.lines.nodes.map((line) => <article key={line.id}><div><p className="eyebrow">{line.merchandise.product.handle}</p><h2>{line.merchandise.product.title}</h2><p>{line.merchandise.title} / Qty {line.quantity}</p></div><button className="text-link" disabled={loading} onClick={() => void removeLine(line.id)}>Remove</button></article>)}</div><p className="cart-total">{new Intl.NumberFormat('en', { style: 'currency', currency: cart.cost.totalAmount.currencyCode }).format(Number(cart.cost.totalAmount.amount))}</p><a className="button button--solid" href={cart.checkoutUrl}>Continue to Shopify test checkout</a>{error && <p className="product-note" role="alert">{error.message}</p>}<aside><p className="eyebrow">Demo boundary</p><p>This opens Shopify’s development-store checkout. Solana test-USDC payment stays disabled until its recipient wallet and Worker-only Admin configuration are supplied.</p></aside></section>;
 }
 
 function About() {
   return <section className="page payment-page"><header className="page-header"><p className="eyebrow">Project scope</p><h1>COMMERCE<br /><em>WITHOUT TRUST.</em></h1><p>0x is a portfolio demonstration of a Shopify storefront behind a Cloudflare Worker payment boundary.</p></header><div className="payment-detail"><article><p className="eyebrow">Shopify</p><p>Catalog, future cart data, and tagged demo orders.</p></article><article><p className="eyebrow">Cloudflare Worker</p><p>Public API gateway, Shopify credential boundary, payment-intent ownership, and future ledger integration.</p></article><article><p className="eyebrow">Testnet only</p><p>Crypto settlement remains disabled until all payment parameters are defined and tested.</p></article></div></section>;
 }
 
-export function App() { return <Layout><Routes><Route path="/" element={<Home />} /><Route path="/shop" element={<Shop />} /><Route path="/products/:handle" element={<ProductPage />} /><Route path="/payment-demo" element={<PaymentDemo />} /><Route path="/cart" element={<CartPage />} /><Route path="/about" element={<About />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></Layout>; }
+export function App() { return <CartProvider><Layout><Routes><Route path="/" element={<Home />} /><Route path="/shop" element={<Shop />} /><Route path="/products/:handle" element={<ProductPage />} /><Route path="/payment-demo" element={<PaymentDemo />} /><Route path="/cart" element={<CartPage />} /><Route path="/about" element={<About />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></Layout></CartProvider>; }

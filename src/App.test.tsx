@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { App } from './App';
 
 describe('storefront routes', () => {
-  it('keeps checkout unavailable until the Worker supports Shopify carts', () => {
+  it('shows an empty Worker-managed bag before a Shopify cart exists', () => {
     render(<MemoryRouter initialEntries={['/cart']}><App /></MemoryRouter>);
 
-    expect(screen.getByRole('heading', { name: /your bag is offline/i })).toBeInTheDocument();
-    expect(screen.getByText(/cart operations are intentionally unavailable/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /your bag is empty/i })).toBeInTheDocument();
+    expect(screen.getByText(/worker-managed cart/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /checkout/i })).not.toBeInTheDocument();
   });
 
