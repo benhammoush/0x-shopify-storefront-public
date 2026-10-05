@@ -6,11 +6,11 @@ Object.assign(globalThis, { Buffer });
 
 export interface SolanaIntent { id: string; mint: string; decimals: number; recipient: string; rawAmount: string; displayAmount: string; expiresAt: string; rpc: string }
 
-interface SolanaWallet { isPhantom?: boolean; publicKey?: PublicKey; connect: () => Promise<{ publicKey: PublicKey }>; sendTransaction: (transaction: Transaction, connection: Connection) => Promise<string> }
-declare global { interface Window { solana?: SolanaWallet } }
+interface SolanaWallet { isPhantom?: boolean; connect: () => Promise<{ publicKey: PublicKey }>; signAndSendTransaction: (transaction: Transaction) => Promise<{ signature: string }> }
+declare global { interface Window { phantom?: { solana?: SolanaWallet } } }
 
 export async function payIntent(intent: SolanaIntent): Promise<string> {
-  const wallet = window.solana;
+  const wallet = window.phantom?.solana;
   if (!wallet?.isPhantom) throw new Error('Install or unlock Phantom to pay with Solana Devnet test USDC.');
   const { publicKey } = await wallet.connect();
   const connection = new Connection(intent.rpc, 'confirmed');
@@ -23,5 +23,5 @@ export async function payIntent(intent: SolanaIntent): Promise<string> {
   transaction.add(createTransferCheckedInstruction(source, mint, destination, publicKey, BigInt(intent.rawAmount), intent.decimals));
   transaction.feePayer = publicKey;
   transaction.recentBlockhash = (await connection.getLatestBlockhash('confirmed')).blockhash;
-  return wallet.sendTransaction(transaction, connection);
+  return (await wallet.signAndSendTransaction(transaction)).signature;
 }

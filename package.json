@@ -1,6 +1,6 @@
 {
   "name": "0x-shopify-storefront",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": true,
   "description": "0x Shopify testnet portfolio storefront",
   "engines": {
