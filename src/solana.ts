@@ -1,5 +1,8 @@
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { createAssociatedTokenAccountInstruction, createTransferCheckedInstruction, getAssociatedTokenAddress } from '@solana/spl-token';
+import { Buffer } from 'buffer';
+
+Object.assign(globalThis, { Buffer });
 
 export interface SolanaIntent { id: string; mint: string; decimals: number; recipient: string; rawAmount: string; displayAmount: string; expiresAt: string; rpc: string }
 
