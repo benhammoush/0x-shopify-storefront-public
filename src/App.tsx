@@ -4,6 +4,7 @@ import { APP_PACKAGE_VERSION } from './appVersion';
 import { ApiError, apiGet, apiPost } from './api/client';
 import { applyThemeMode, initialThemeMode, UiThemeMode } from './design-system/theme';
 import { useWorkerResource } from './hooks/useWorkerResource';
+import { payIntent, SolanaIntent } from './solana';
 
 interface Product { id: string; handle: string; title: string; description: string; availableForSale: boolean; featuredImage?: { url: string; altText?: string | null } | null; priceRange: { minVariantPrice: { amount: string; currencyCode: string } }; variants: { nodes: Array<{ id: string; title: string; availableForSale: boolean }> } }
 interface CampaignImage { url: string; altText?: string | null }
@@ -145,11 +146,33 @@ function DeliveryEstimator({ cart }: { cart: Cart }) {
   return <section className="delivery-estimator"><p className="eyebrow">Step 01 / Delivery</p><h2>CALCULATE<br /><em>THE TOTAL.</em></h2><p>Shopify calculates delivery and taxes from this one-time address before any future test-USDC quote.</p><form onSubmit={submit}><div className="delivery-grid"><input required placeholder="First name" value={address.firstName} onChange={set('firstName')} /><input required placeholder="Last name" value={address.lastName} onChange={set('lastName')} /><input required placeholder="Address" value={address.address1} onChange={set('address1')} /><input placeholder="Apartment, suite, etc." value={address.address2} onChange={set('address2')} /><input required placeholder="City" value={address.city} onChange={set('city')} /><input placeholder="State / province code" value={address.provinceCode} onChange={set('provinceCode')} /><input required placeholder="Postal code" value={address.zip} onChange={set('zip')} /><input required maxLength={2} placeholder="Country code" value={address.countryCode} onChange={(event) => setAddress({ ...address, countryCode: event.target.value.toUpperCase() })} /></div><button className="button button--quiet" disabled={loading}>{loading ? 'Calculating' : 'Calculate delivery'}</button></form>{cart.deliveryGroups.nodes.length > 0 && <div className="delivery-options"><p className="eyebrow">Step 02 / Select delivery</p>{cart.deliveryGroups.nodes.map((group) => group.deliveryOptions.length ? group.deliveryOptions.map((option) => <button key={option.handle} className={group.selectedDeliveryOption?.handle === option.handle ? 'delivery-option delivery-option--selected' : 'delivery-option'} disabled={loading} onClick={() => void selectDeliveryOption(group.id, option.handle)}><span>{option.title}{option.description ? ` / ${option.description}` : ''}</span><b>{new Intl.NumberFormat('en', { style: 'currency', currency: option.estimatedCost.currencyCode }).format(Number(option.estimatedCost.amount))}</b></button>) : <p key={group.id}>No Shopify delivery options are available for this address.</p>)}</div>}</section>;
 }
 
+function CryptoPayment({ cart }: { cart: Cart }) {
+  const [message, setMessage] = useState<string>();
+  const [working, setWorking] = useState(false);
+  const ready = cart.deliveryGroups.nodes.length > 0 && cart.deliveryGroups.nodes.every((group) => group.selectedDeliveryOption);
+  const pay = async () => {
+    setWorking(true); setMessage(undefined);
+    try {
+      const { data } = await apiPost<{ intent: SolanaIntent }>('/v1/crypto/intents', { cartId: cart.id });
+      setMessage(`Approve ${data.intent.displayAmount} test USDC in Phantom.`);
+      const signature = await payIntent(data.intent);
+      setMessage('Waiting for finalized Solana confirmation.');
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const { data: result } = await apiPost<{ status: string }> (`/v1/crypto/intents/${data.intent.id}/verify`, { signature });
+        if (result.status === 'Verified testnet transfer') { setMessage(result.status); return; }
+        await new Promise((resolve) => window.setTimeout(resolve, 2_500));
+      }
+      setMessage('Transaction submitted. Check again after Solana finalizes it.');
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Test-USDC payment could not be completed.'); } finally { setWorking(false); }
+  };
+  return <section className="crypto-payment"><p className="eyebrow">Step 03 / Solana Devnet</p><h2>PAY WITH<br /><em>TEST USDC.</em></h2><p>Phantom transfers the exact Shopify total. The Worker verifies the finalized transfer before creating the pending Shopify test order.</p><button className="button button--solid" disabled={!ready || working} onClick={() => void pay()}>{working ? 'Processing testnet transfer' : ready ? 'Pay with test USDC' : 'Select delivery first'}</button>{message && <p className="product-note" role="status">{message}</p>}</section>;
+}
+
 function CartPage() {
   const { cart, loading, error, removeLine } = useCart();
   if (loading && !cart) return <section className="page cart-page"><p className="eyebrow">Bag</p><h1>LOADING<br /><em>BAG.</em></h1></section>;
   if (!cart?.lines.nodes.length) return <section className="page cart-page"><p className="eyebrow">Bag / 00</p><h1>YOUR BAG IS<br /><em>EMPTY.</em></h1><p>Add a Shopify product to create a Worker-managed cart.</p><Link className="button button--solid" to="/shop">Continue browsing</Link></section>;
-  return <section className="page cart-page"><p className="eyebrow">Bag / {String(cart.totalQuantity).padStart(2, '0')}</p><h1>YOUR<br /><em>BAG.</em></h1><div className="cart-lines">{cart.lines.nodes.map((line) => <article key={line.id}><div><p className="eyebrow">{line.merchandise.product.handle}</p><h2>{line.merchandise.product.title}</h2><p>{line.merchandise.title} / Qty {line.quantity}</p></div><button className="text-link" disabled={loading} onClick={() => void removeLine(line.id)}>Remove</button></article>)}</div><DeliveryEstimator cart={cart} /><p className="cart-total">{new Intl.NumberFormat('en', { style: 'currency', currency: cart.cost.totalAmount.currencyCode }).format(Number(cart.cost.totalAmount.amount))}</p><a className="button button--solid" href={cart.checkoutUrl}>Continue to Shopify test checkout</a>{error && <p className="product-note" role="alert">{error.message}</p>}<aside><p className="eyebrow">Demo boundary</p><p>This opens Shopify’s development-store checkout. Solana Devnet RPC is configured, but test-USDC payment stays disabled until its verifier and Shopify order flow are implemented.</p></aside></section>;
+  return <section className="page cart-page"><p className="eyebrow">Bag / {String(cart.totalQuantity).padStart(2, '0')}</p><h1>YOUR<br /><em>BAG.</em></h1><div className="cart-lines">{cart.lines.nodes.map((line) => <article key={line.id}><div><p className="eyebrow">{line.merchandise.product.handle}</p><h2>{line.merchandise.product.title}</h2><p>{line.merchandise.title} / Qty {line.quantity}</p></div><button className="text-link" disabled={loading} onClick={() => void removeLine(line.id)}>Remove</button></article>)}</div><DeliveryEstimator cart={cart} /><p className="cart-total">{new Intl.NumberFormat('en', { style: 'currency', currency: cart.cost.totalAmount.currencyCode }).format(Number(cart.cost.totalAmount.amount))}</p><CryptoPayment cart={cart} /><a className="button button--quiet" href={cart.checkoutUrl}>Continue to Shopify test checkout</a>{error && <p className="product-note" role="alert">{error.message}</p>}<aside><p className="eyebrow">Demo boundary</p><p>Testnet only. A successful payment is labeled Verified testnet transfer after Worker verification and a pending Shopify test order.</p></aside></section>;
 }
 
 function About() {
