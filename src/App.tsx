@@ -135,7 +135,7 @@ function ProductPage() {
 }
 
 function PaymentDemo() {
-  return <section className="page payment-page"><header className="page-header"><p className="eyebrow">0x payment gateway</p><h1>TRUST<br /><em>BOUNDARY.</em></h1><p>A custom payment gateway demonstration for a Shopify development store. It does not replace Shopify Payments and it cannot accept real funds.</p></header><GatewaySummary /><section className="payment-detail"><article><p className="eyebrow">Browser</p><p>Can request storefront data and submit a future payment request. It cannot set authoritative amount, recipient, chain, or status.</p></article><article><p className="eyebrow">Worker</p><p>Will fetch the canonical Shopify cart, bind it to a payment intent, and enforce a single settlement.</p></article><article><p className="eyebrow">Verifier</p><p>Will confirm the ERC-20 transfer and required confirmations before a tagged Shopify demo order is updated.</p></article></section><div className="resource-state"><p className="eyebrow">Crypto checkout disabled</p><p>Chain, token decimals, conversion formula, quote expiry, confirmation count, and settlement policies have not been specified and tested. Payment controls remain unavailable by design.</p></div></section>;
+  return <section className="page payment-page"><header className="page-header"><p className="eyebrow">0x payment gateway</p><h1>TRUST<br /><em>BOUNDARY.</em></h1><p>A custom payment gateway demonstration for a Shopify development store. It does not replace Shopify Payments and it cannot accept real funds.</p></header><GatewaySummary /><section className="payment-detail"><article><p className="eyebrow">Browser</p><p>Can request an intent and submit a transaction signature. It cannot set the amount, recipient, chain, quote, or status.</p></article><article><p className="eyebrow">Worker</p><p>Fetches the canonical Shopify cart, locks a Jupiter SOL/USD reference quote, and enforces a single settlement.</p></article><article><p className="eyebrow">Verifier</p><p>Confirms the finalized native Devnet SOL transfer before creating a tagged Shopify demo order.</p></article></section><div className="resource-state"><p className="eyebrow">Testnet-only conversion</p><p>Devnet SOL has no market value. The Worker uses a locked Jupiter SOL/USD market reference only to convert the Shopify USD total for this portfolio demonstration.</p></div></section>;
 }
 
 function DeliveryEstimator({ cart }: { cart: Cart }) {
@@ -154,7 +154,7 @@ function CryptoPayment({ cart }: { cart: Cart }) {
     setWorking(true); setMessage(undefined);
     try {
       const { data } = await apiPost<{ intent: SolanaIntent }>('/v1/crypto/intents', { cartId: cart.id });
-      setMessage(`Approve ${data.intent.displayAmount} test USDC in Phantom.`);
+      setMessage(`Approve ${data.intent.displayAmount} Devnet SOL in Phantom.`);
       const signature = await payIntent(data.intent);
       setMessage('Waiting for finalized Solana confirmation.');
       for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -163,9 +163,9 @@ function CryptoPayment({ cart }: { cart: Cart }) {
         await new Promise((resolve) => window.setTimeout(resolve, 2_500));
       }
       setMessage('Transaction submitted. Check again after Solana finalizes it.');
-    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Test-USDC payment could not be completed.'); } finally { setWorking(false); }
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Devnet SOL payment could not be completed.'); } finally { setWorking(false); }
   };
-  return <section className="crypto-payment"><p className="eyebrow">Step 03 / Solana Devnet</p><h2>PAY WITH<br /><em>TEST USDC.</em></h2><p>Phantom transfers the exact Shopify total. The Worker verifies the finalized transfer before creating the pending Shopify test order.</p><button className="button button--solid" disabled={!ready || working} onClick={() => void pay()}>{working ? 'Processing testnet transfer' : ready ? 'Pay with test USDC' : 'Select delivery first'}</button>{message && <p className="product-note" role="status">{message}</p>}</section>;
+  return <section className="crypto-payment"><p className="eyebrow">Step 03 / Solana Devnet</p><h2>PAY WITH<br /><em>DEVNET SOL.</em></h2><p>Phantom transfers the Worker-issued lamports. The Worker verifies the finalized transfer before creating the pending Shopify test order.</p><button className="button button--solid" disabled={!ready || working} onClick={() => void pay()}>{working ? 'Processing testnet transfer' : ready ? 'Pay with Devnet SOL' : 'Select delivery first'}</button>{message && <p className="product-note" role="status">{message}</p>}</section>;
 }
 
 function CartPage() {

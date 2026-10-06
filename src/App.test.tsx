@@ -12,11 +12,12 @@ describe('storefront routes', () => {
     expect(screen.queryByRole('button', { name: /checkout/i })).not.toBeInTheDocument();
   });
 
-  it('renders the custom payment boundary without enabling crypto checkout', () => {
+  it('renders the native-SOL payment boundary', () => {
     render(<MemoryRouter initialEntries={['/payment-demo']}><App /></MemoryRouter>);
 
     expect(screen.getByRole('heading', { name: /trust boundary/i })).toBeInTheDocument();
-    expect(screen.getByText(/crypto checkout disabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/testnet-only conversion/i)).toBeInTheDocument();
+    expect(screen.getByText(/jupiter sol\/usd market reference/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /pay/i })).not.toBeInTheDocument();
   });
 });

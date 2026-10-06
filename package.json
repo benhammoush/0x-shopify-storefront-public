@@ -1,6 +1,6 @@
 {
   "name": "0x-shopify-storefront",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "private": true,
   "description": "0x Shopify testnet portfolio storefront",
   "engines": {
@@ -13,7 +13,6 @@
     "build": "npm run typecheck && vite build"
   },
   "dependencies": {
-    "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
     "buffer": "^6.0.3",
     "react": "^18.3.1",
